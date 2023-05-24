@@ -1,0 +1,110 @@
+  ---
+- name: Install and Configure HashiCorp Vault
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    - name: Add HashiCorp GPG key
+      apt_key:
+        url: https://apt.releases.hashicorp.com/gpg
+        state: present
+
+    - name: Add HashiCorp repository
+      apt_repository:
+        repo: "deb [arch=amd64] https://apt.releases.hashicorp.com {{ ansible_distribution_release }} main"
+        state: present
+
+    - name: Update package lists
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install Vault package
+      apt:
+        name: vault
+        state: present
+
+    - name: Create Vault configuration directory
+      file:
+        path: /etc/vault.d
+        state: directory
+
+    - name: Configure Vault
+      copy:
+        dest: /etc/vault.d/vault.hcl
+        content: |
+          ui = true
+
+          #mlock = true
+          #disable_mlock = true
+
+          storage "file" {
+            path = "/opt/vault/data"
+          }
+
+          #storage "consul" {
+          # address = "127.0.0.1:8500"
+          # path = "vault"
+          #}
+
+          #HTTP listener
+          listener "tcp" {
+            address = "0.0.0.0:8200"
+            tls_disable = 1
+          }
+
+          # HTTPS listener
+          # listener "tcp" {
+          # address = "0.0.0.0:8200"
+          # tls_cert_file = "/opt/vault/tls/tls.crt"
+          # tls_key_file = "/opt/vault/tls/tls.key"
+          # }
+
+          # telemetry {
+          #   statsite_address = "127.0.0.1:8125"
+          #   disable_hostname = true
+          # }
+
+    - name: Set VAULT_SKIP_VERIFY environment variable
+      lineinfile:
+        dest: /etc/environment
+        line: 'VAULT_SKIP_VERIFY=true'
+        state: present
+      become: true
+      become_user: root
+
+    - name: Set VAULT_ADDR environment variable
+      lineinfile:
+        dest: /etc/environment
+        line: 'VAULT_ADDR=http://127.0.0.1:8200'
+        state: present
+      become: true
+      become_user: root
+
+    - name: Start and enable Vault service
+      service:
+        name: vault
+        state: started
+        enabled: true
+
+    - name: Create Vault audit log file
+      file:
+        path: /var/log/vault_audit.log
+        state: touch
+        mode: 0644
+        owner: vault
+        group: vault
+
+    - name: Install required packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - jq
+        - net-tools
+
+    - name: Print message
+      debug:
+        msg: "Vault up & running..."
+
